@@ -24,6 +24,8 @@
   let showAdvanced = false;
   let showExplanation = false;
   let processor: LogProcessor;
+  let totalFiles = 0;
+  let processedFiles = 0;
 
   // Naming convention settings
   let namingSettings = {
@@ -41,8 +43,9 @@
   let itemsPerPageOptions = [10, 25, 50, 100];
   
   // Constants for file processing
-  const MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024; // 10GB
+  const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB limit per file
   const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks for processing
+  const MAX_LINES_IN_MEMORY = 10000; // Reduced to 10k lines at a time
   
   $: {
     // Filter results whenever excludePublicIPs changes or results change
@@ -223,8 +226,7 @@
     let offset = 0;
     let lastPartialLine = '';
     let processedLines: string[] = [];
-    const maxLinesInMemory = 100000; // Process 100k lines at a time
-
+    
     const readNextChunk = () => {
       const slice = file.slice(offset, offset + CHUNK_SIZE);
       reader.readAsText(slice);
@@ -240,16 +242,20 @@
 
             processedLines.push(...lines);
 
-            // Process lines in batches to avoid memory issues
-            if (processedLines.length >= maxLinesInMemory) {
+            // Process lines in smaller batches to avoid memory issues
+            while (processedLines.length >= MAX_LINES_IN_MEMORY) {
               try {
-                // Process the current batch
-                const currentBatch = processedLines.join('\n');
+                const currentBatch = processedLines.splice(0, MAX_LINES_IN_MEMORY).join('\n');
                 const batchResults = await processor.processFile(currentBatch);
                 results = [...results, ...batchResults];
                 
-                // Clear the processed lines to free memory
-                processedLines = [];
+                // Force garbage collection hint
+                processedLines = processedLines.filter(Boolean);
+                
+                // Update progress more frequently
+                const progress = Math.min((offset / file.size) * 100, 99);
+                currentProgress = progress;
+                
               } catch (err) {
                 reject(err);
                 return;
@@ -258,23 +264,31 @@
 
             offset += CHUNK_SIZE;
 
-            // Update progress
-            const progress = Math.min((offset / file.size) * 100, 99);
-            currentProgress = progress;
-
             if (offset < file.size) {
+              // Small delay to allow UI updates and garbage collection
+              await new Promise(resolve => setTimeout(resolve, 0));
               readNextChunk();
             } else {
-              // Process any remaining lines including the last partial line
-              if (lastPartialLine) {
-                processedLines.push(lastPartialLine);
-              }
-              
-              if (processedLines.length > 0) {
+              // Process remaining lines
+              if (processedLines.length > 0 || lastPartialLine) {
                 try {
-                  const finalBatch = processedLines.join('\n');
-                  const batchResults = await processor.processFile(finalBatch);
-                  results = [...results, ...batchResults];
+                  if (lastPartialLine) {
+                    processedLines.push(lastPartialLine);
+                  }
+                  
+                  // Process remaining lines in smaller batches
+                  while (processedLines.length > 0) {
+                    const batchSize = Math.min(processedLines.length, MAX_LINES_IN_MEMORY);
+                    const currentBatch = processedLines.splice(0, batchSize).join('\n');
+                    const batchResults = await processor.processFile(currentBatch);
+                    results = [...results, ...batchResults];
+                    
+                    // Force garbage collection hint
+                    processedLines = processedLines.filter(Boolean);
+                    
+                    // Small delay between batches
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                  }
                 } catch (err) {
                   reject(err);
                   return;
@@ -298,47 +312,63 @@
   }
   
   async function handleFileUpload(event: Event) {
-    const file = (event.target as HTMLInputElement).files?.[0];
-    if (!file) {
-      showError('Please select a file first');
+    const files = (event.target as HTMLInputElement).files;
+    if (!files || files.length === 0) {
+      showError('Please select at least one file');
       return;
     }
 
-    if (file.size === 0) {
-      showError('The selected file is empty');
-      return;
-    }
+    // Convert FileList to array for easier handling
+    const fileArray = Array.from(files);
+    totalFiles = fileArray.length;
+    processedFiles = 0;
 
-    if (file.size > MAX_FILE_SIZE) {
-      showError(
-        'File is too large',
-        `Maximum file size is 10GB. Selected file size: ${(file.size / (1024 * 1024 * 1024)).toFixed(2)}GB`
-      );
-      return;
+    // Validate all files first
+    for (const file of fileArray) {
+      if (file.size === 0) {
+        showError('One of the selected files is empty');
+        return;
+      }
+
+      if (file.size > MAX_FILE_SIZE) {
+        showError(
+          'File is too large',
+          `Maximum file size is 2GB per file. File "${file.name}" size: ${(file.size / (1024 * 1024 * 1024)).toFixed(2)}GB`
+        );
+        return;
+      }
     }
 
     isProcessing = true;
     currentProgress = 0;
-    status = 'Processing file...';
+    status = 'Processing files...';
     error = '';
-    cliScriptAddresses = '';
-    cliScriptServices = '';
-    cliScriptPolicies = '';
     results = [];
     progress.reset();
     progress.setStatus('uploading');
     
     try {
-      if (file.size > CHUNK_SIZE) {
-        status = 'Reading large file in chunks...';
-        results = await processFileInChunks(file) as ProcessedEntry[];
-      } else {
-        const fileContent = await file.text();
-        results = await processor.processFile(fileContent);
+      // Process each file sequentially
+      for (const file of fileArray) {
+        status = `Processing file ${processedFiles + 1} of ${totalFiles}: ${file.name}`;
+        
+        let fileResults: ProcessedEntry[];
+        if (file.size > CHUNK_SIZE) {
+          fileResults = await processFileInChunks(file) as ProcessedEntry[];
+        } else {
+          const fileContent = await file.text();
+          fileResults = await processor.processFile(fileContent);
+        }
+
+        // Merge results, maintaining unique combinations
+        results = processor.mergeResults(results, fileResults);
+        
+        processedFiles++;
+        currentProgress = (processedFiles / totalFiles) * 100;
       }
       
       if (results.length === 0) {
-        showError('No valid entries found in the file', 'The file may be empty or not in the expected format');
+        showError('No valid entries found in any of the files', 'The files may be empty or not in the expected format');
         return;
       }
 
@@ -348,7 +378,7 @@
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred';
       const errorStack = e instanceof Error ? e.stack : '';
-      showError('Error processing file', `${errorMessage}\n\n${errorStack}`);
+      showError('Error processing files', `${errorMessage}\n\n${errorStack}`);
     } finally {
       isProcessing = false;
       currentProgress = 100;
@@ -493,6 +523,7 @@
       accept=".csv"
       bind:this={fileInput}
       on:change={handleFileUpload}
+      multiple
       class="block w-full text-sm text-gray-900 dark:text-gray-300
         file:mr-4 file:py-2 file:px-4
         file:rounded-full file:border-0
@@ -500,6 +531,9 @@
         file:bg-primary file:text-white
         hover:file:bg-primary/90"
     />
+    <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+      You can select multiple files up to 2GB each. Results will be combined automatically.
+    </p>
   </div>
 
   {#if isProcessing}
@@ -510,6 +544,10 @@
       ></div>
       <div class="text-center text-sm text-gray-600 dark:text-gray-300 mt-2">
         {Math.round(currentProgress)}% processed
+        {#if totalFiles > 1}
+          <br>
+          Processing file {processedFiles + 1} of {totalFiles}
+        {/if}
       </div>
     </div>
   {/if}

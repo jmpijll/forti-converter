@@ -140,6 +140,34 @@ export class LogProcessor {
     return newPartialLine;
   }
 
+  public mergeResults(existingResults: ProcessedEntry[], newResults: ProcessedEntry[]): ProcessedEntry[] {
+    // Create a map of existing results for faster lookup
+    const resultMap = new Map<string, ProcessedEntry>();
+    
+    // Add existing results to the map
+    for (const entry of existingResults) {
+      const key = `${entry.destination.ip}:${entry.destination.port}:${entry.destination.protocol}`;
+      resultMap.set(key, entry);
+    }
+    
+    // Merge new results, combining sources for matching entries
+    for (const newEntry of newResults) {
+      const key = `${newEntry.destination.ip}:${newEntry.destination.port}:${newEntry.destination.protocol}`;
+      const existingEntry = resultMap.get(key);
+      
+      if (existingEntry) {
+        // Merge sources, ensuring uniqueness
+        const uniqueSources = new Set([...existingEntry.sources, ...newEntry.sources]);
+        existingEntry.sources = Array.from(uniqueSources);
+      } else {
+        // Add new entry
+        resultMap.set(key, newEntry);
+      }
+    }
+    
+    return Array.from(resultMap.values());
+  }
+
   public async processFile(fileContent: string): Promise<ProcessedEntry[]> {
     this.processedEntries.clear();
     let processedBytes = 0;
@@ -183,6 +211,17 @@ export class LogProcessor {
     } catch (error) {
       console.error('Processing error:', error);
       throw new Error(`Error processing file: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private async processLine(line: string) {
+    try {
+      // Process the line and update processedEntries
+      // Implementation depends on your specific CSV format
+    } catch (error) {
+      if (this.debug) {
+        console.warn('Error processing line:', error);
+      }
     }
   }
 
