@@ -41,7 +41,7 @@
   let itemsPerPageOptions = [10, 25, 50, 100];
   
   // Constants for file processing
-  const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
+  const MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024; // 10GB
   const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks for processing
   
   $: {
@@ -312,7 +312,7 @@
     if (file.size > MAX_FILE_SIZE) {
       showError(
         'File is too large',
-        `Maximum file size is 2GB. Selected file size: ${(file.size / (1024 * 1024 * 1024)).toFixed(2)}GB`
+        `Maximum file size is 10GB. Selected file size: ${(file.size / (1024 * 1024 * 1024)).toFixed(2)}GB`
       );
       return;
     }
