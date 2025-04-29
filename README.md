@@ -36,7 +36,7 @@ A modern web application for converting FortiAnalyzer traffic logs into FortiGat
 2. Clone and set up the project
    ```powershell
    # Open PowerShell and run:
-   git clone https://github.com/yourusername/forti-converter.git
+   git clone https://github.com/jmpijll/forti-converter.git
    cd forti-converter
    npm install
    ```
@@ -61,7 +61,7 @@ A modern web application for converting FortiAnalyzer traffic logs into FortiGat
 
 2. Clone and set up the project
    ```bash
-   git clone https://github.com/yourusername/forti-converter.git
+   git clone https://github.com/jmpijll/forti-converter.git
    cd forti-converter
    npm install
    ```
@@ -84,7 +84,7 @@ A modern web application for converting FortiAnalyzer traffic logs into FortiGat
 
 2. Clone and set up the project
    ```bash
-   git clone https://github.com/yourusername/forti-converter.git
+   git clone https://github.com/jmpijll/forti-converter.git
    cd forti-converter
    npm install
    ```
@@ -107,7 +107,7 @@ A modern web application for converting FortiAnalyzer traffic logs into FortiGat
 
 2. Clone and set up the project
    ```bash
-   git clone https://github.com/yourusername/forti-converter.git
+   git clone https://github.com/jmpijll/forti-converter.git
    cd forti-converter
    npm install
    ```
