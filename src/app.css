@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    @apply antialiased;
+  }
+
+  body {
+    @apply min-h-screen bg-gray-50 dark:bg-gray-900;
+  }
+} 
